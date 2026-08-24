@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Finanzas — Dashboard</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #ffffff; }
+  body { font-family: -apple-system, 'Inter', 'Helvetica Neue', Arial, sans-serif; }
+  #app { max-width: 480px; margin: 0 auto; padding: 1rem 1rem 3rem; }
+
+  .fdd { position: relative; display: inline-block; }
+  .fdd summary { list-style: none; cursor: pointer; font-size: 12px; padding: 5px 10px; border-radius: 7px; border: 1px solid #E5E7EB; background: #fff; color: #111827; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .fdd summary::-webkit-details-marker { display: none; }
+  .fdd[open] summary { border-color: #9CA3AF; }
+  .fdd-panel { position: absolute; top: calc(100% + 5px); left: 0; z-index: 10; background: #fff; border: 1px solid #E5E7EB; border-radius: 10px; padding: 8px 10px; min-width: 200px; box-shadow: 0 6px 20px rgba(17,24,39,0.10); max-height: 240px; overflow-y: auto; }
+  .fdd-row { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #374151; padding: 3px 0; }
+  .fdd-group-title { font-size: 9px; letter-spacing: 0.05em; text-transform: uppercase; color: #9CA3AF; margin: 7px 0 2px; }
+  .fdd-group-title:first-child { margin-top: 0; }
+  .fdd-row input { accent-color: #374151; }
+
+  .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 380px) { .twocol { grid-template-columns: 1fr; } }
+
+  .rangebox { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .rangebox .chip { font-size: 12px; font-weight: 600; color: #111827; background: #F7F7F8; border: 1px solid #EEEEEF; border-radius: 6px; padding: 3px 9px; }
+  .rangebox .sep { color: #B0B5BC; font-size: 11px; }
+  .rangeslider { position: relative; height: 22px; margin: 0 4px 14px; }
+  .rangeslider .track-bg { position: absolute; top: 8px; left: 0; right: 0; height: 4px; border-radius: 2px; background: #E9EAEC; }
+  .rangeslider .track-fill { position: absolute; top: 8px; height: 4px; border-radius: 2px; background: #374151; }
+  .rangeslider input[type=range] {
+    position: absolute; width: 100%; top: 0; height: 22px; margin: 0;
+    background: transparent; pointer-events: none; -webkit-appearance: none; appearance: none;
+  }
+  .rangeslider input[type=range]::-webkit-slider-runnable-track { background: transparent; height: 22px; }
+  .rangeslider input[type=range]::-webkit-slider-thumb {
+    pointer-events: auto; -webkit-appearance: none; appearance: none;
+    width: 15px; height: 15px; border-radius: 50%; background: #fff;
+    border: 2px solid #374151; cursor: pointer; margin-top: 3.5px;
+  }
+  .rangeslider input[type=range]::-moz-range-track { background: transparent; height: 4px; }
+  .rangeslider input[type=range]::-moz-range-thumb {
+    pointer-events: auto; width: 15px; height: 15px; border-radius: 50%;
+    background: #fff; border: 2px solid #374151; cursor: pointer;
+  }
+
+  .kpi { border-radius: 10px; padding: 0.7rem 0.6rem; }
+  .kpi p.label { font-size: 9px; letter-spacing: 0.04em; text-transform: uppercase; margin: 0 0 5px; opacity: 0.85; }
+  .kpi p.value { font-size: 15px; font-weight: 700; margin: 0; }
+
+  .section-title { font-size: 11px; letter-spacing: 0.03em; text-transform: uppercase; color: #6B7280; margin: 0 0 8px; font-weight: 600; }
+
+  #status { font-size: 13px; color: #6B7280; padding: 2rem 0; text-align: center; }
+  #warn { font-size: 11px; color: #B5453B; margin: 0 0 12px; display: none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="status">Cargando datos del Sheet…</div>
+  <div id="content" style="display:none;">
+
+    <p style="font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: #9CA3AF; margin: 0 0 6px;">Periodo</p>
+    <div class="rangebox">
+      <span class="chip" id="fromChip">—</span>
+      <span class="sep">a</span>
+      <span class="chip" id="toChip">—</span>
+    </div>
+    <div class="rangeslider">
+      <div class="track-bg"></div>
+      <div class="track-fill" id="trackFill"></div>
+      <input type="range" id="rFrom" min="0" max="0" step="1" value="0">
+      <input type="range" id="rTo" min="0" max="0" step="1" value="0">
+    </div>
+
+    <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 1.1rem; flex-wrap: wrap;">
+      <details class="fdd" id="catDD">
+        <summary>Categoría <span id="catCount" style="color:#9CA3AF;">· Todas</span></summary>
+        <div class="fdd-panel" id="catPanel"></div>
+      </details>
+      <details class="fdd" id="subDD">
+        <summary>Subcategoría <span id="subCount" style="color:#9CA3AF;">· Todas</span></summary>
+        <div class="fdd-panel" id="subPanel"></div>
+      </details>
+    </div>
+
+    <p id="warn"></p>
+
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 1.4rem;">
+      <div class="kpi" style="background: #FBEEEC;">
+        <p class="label" style="color:#B5453B;">Gasto</p>
+        <p class="value" id="kpiGasto" style="color:#B5453B;">—</p>
+      </div>
+      <div class="kpi" style="background: #EAF3EE;">
+        <p class="label" style="color:#3E7A56;">Ingreso</p>
+        <p class="value" id="kpiIngreso" style="color:#3E7A56;">—</p>
+      </div>
+      <div class="kpi" style="background: #374151;">
+        <p class="label" style="color:#D1D5DB;">Ahorro</p>
+        <p class="value" id="kpiAhorro" style="color:#fff;">—</p>
+      </div>
+    </div>
+
+    <p class="section-title">Gasto Real V/S Presupuesto</p>
+    <div style="position: relative; height: 190px; margin-bottom: 1.6rem;">
+      <canvas id="stackedCatChart"></canvas>
+    </div>
+
+    <div class="twocol" style="margin-bottom: 1.6rem;">
+      <div>
+        <p class="section-title">Gastos</p>
+        <div style="position: relative; height: 170px;">
+          <canvas id="pieChart"></canvas>
+        </div>
+      </div>
+      <div>
+        <p class="section-title">Ranking de Gastos</p>
+        <div style="position: relative; height: 170px;">
+          <canvas id="rankChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <p class="section-title">Ingreso | Gasto | Ahorro</p>
+    <div style="position: relative; height: 190px;">
+      <canvas id="flowChart"></canvas>
+    </div>
+
+    <p id="uncatNote" style="font-size: 11px; color: #B0B5BC; margin-top: 1.2rem; display:none;"></p>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+const SHEET_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRMLMr2pGrS2hAfaaCsOw6dE5S0BjGfG8JQurCvLUSGQVwncycptUmZwHtr0hrhuCWtksKSVDbvNxVn/pub?single=true&output=csv&gid=";
+const GID = { D: "422426543", C: "0", I: "1295296830", P: "1156383057", R: "815960230" };
+
+const RED = "#B5453B";
+const GREEN = "#5B7F6B";
+const CHARCOAL = "#374151";
+const INK = "#111827";
+const GRAY_DEUDA = "#9CA3AF";
+const PALETTE = ["#0F2E36","#153E48","#1D4F5C","#25636B","#2E7680","#3D8A8C","#4F9AA0","#6FB3AC","#86C0BA","#A6D4C9","#BFE0D6"];
+const MES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+
+function parseCSV(text) {
+  const lines = text.replace(/\r\n/g, "\n").split("\n").filter(l => l.length > 0);
+  const rows = lines.map(line => {
+    const fields = [];
+    let cur = "", inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQ) {
+        if (ch === '"') { if (line[i+1] === '"') { cur += '"'; i++; } else inQ = false; }
+        else cur += ch;
+      } else {
+        if (ch === '"') inQ = true;
+        else if (ch === ",") { fields.push(cur); cur = ""; }
+        else cur += ch;
+      }
+    }
+    fields.push(cur);
+    return fields;
+  });
+  const headers = rows[0].map(h => h.trim());
+  return rows.slice(1).map(r => {
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = (r[i] || "").trim());
+    return obj;
+  });
+}
+
+function parseMonto(s) {
+  if (!s) return 0;
+  const neg = s.trim().startsWith("-");
+  const digits = s.replace(/[^0-9]/g, "");
+  const n = digits ? parseInt(digits, 10) : 0;
+  return neg ? -n : n;
+}
+
+function fechaKey(s) {
+  if (!s) return null;
+  const parts = s.split("-").map(x => x.trim());
+  if (parts.length !== 3) return null;
+  let [d, m, y] = parts;
+  if (y.length !== 4) return null;
+  return y + "-" + m.padStart(2, "0");
+}
+
+function monthLabel(key) {
+  const [y, m] = key.split("-");
+  return MES[parseInt(m, 10) - 1] + " " + y.slice(2);
+}
+
+async function loadCSV(gid) {
+  const res = await fetch(SHEET_BASE + gid, { cache: "no-store" });
+  if (!res.ok) throw new Error("No se pudo cargar gid " + gid);
+  const text = await res.text();
+  return parseCSV(text);
+}
+
+(async function init() {
+  let D, C, I, P, R;
+  try {
+    [D, C, I, P, R] = await Promise.all([
+      loadCSV(GID.D), loadCSV(GID.C), loadCSV(GID.I), loadCSV(GID.P), loadCSV(GID.R)
+    ]);
+  } catch (e) {
+    document.getElementById("status").textContent = "No se pudieron cargar los datos. Revisa tu conexión o que el Sheet siga publicado.";
+    return;
+  }
+
+  // --- mapa subcategoría -> {tipo, categoria} desde Reglas ---
+  const map = {};
+  const reglasByTipoCat = {}; // tipo -> categoria -> [subcategorias]
+  R.forEach(row => {
+    const tipo = row["Tipo"], categoria = row["Categoría"], sub = row["Subcategoría"];
+    if (!tipo || !categoria || !sub) return;
+    map[sub.toLowerCase()] = { tipo, categoria };
+    reglasByTipoCat[tipo] = reglasByTipoCat[tipo] || {};
+    reglasByTipoCat[tipo][categoria] = reglasByTipoCat[tipo][categoria] || [];
+    reglasByTipoCat[tipo][categoria].push(sub);
+  });
+
+  let uncatCount = 0;
+
+  function joinRows(rows, montoField, origen) {
+    const out = [];
+    rows.forEach(row => {
+      if (origen === "Internacional" && (row["glosa"] || "").trim().toUpperCase() === "TRASPASO DEUDA INTERNACIONAL") return;
+      const sub = (row["subcategoria"] || "").trim();
+      const month = fechaKey(row["fecha"]);
+      if (!month) return;
+      if (!sub) { uncatCount++; return; }
+      const hit = map[sub.toLowerCase()];
+      if (!hit) { uncatCount++; return; }
+      const monto = parseMonto(row[montoField]);
+      out.push({ month, tipo: hit.tipo, categoria: hit.categoria, subcategoria: sub, monto });
+    });
+    return out;
+  }
+
+  const txns = [
+    ...joinRows(D, "monto", "Débito"),
+    ...joinRows(C, "monto", "Crédito"),
+    ...joinRows(I, "monto_usd", "Internacional")
+  ];
+
+  const presu = [];
+  P.forEach(row => {
+    const sub = (row["subcategoria"] || "").trim();
+    const month = fechaKey(row["Fecha"] || row["fecha"]);
+    if (!month || !sub) return;
+    const hit = map[sub.toLowerCase()];
+    if (!hit) return;
+    presu.push({ month, tipo: hit.tipo, categoria: hit.categoria, subcategoria: sub, monto: parseMonto(row["monto"]) });
+  });
+
+  if (txns.length === 0) {
+    document.getElementById("status").textContent = "No hay movimientos categorizados todavía en el Sheet.";
+    return;
+  }
+
+  // --- meses disponibles ---
+  const monthSet = new Set([...txns.map(t => t.month), ...presu.map(t => t.month)]);
+  const MONTHS = Array.from(monthSet).sort();
+
+  // --- categorías de Gasto (para filtros y gráficos) ---
+  const gastoCatMap = reglasByTipoCat["Gasto"] || {};
+  const catNames = Object.keys(gastoCatMap).sort();
+  const CAT_COLORS = {};
+  let pIdx = 0;
+  catNames.forEach(c => {
+    if (c === "Deuda") { CAT_COLORS[c] = GRAY_DEUDA; return; }
+    CAT_COLORS[c] = PALETTE[pIdx % PALETTE.length];
+    pIdx++;
+  });
+
+  const selectedCats = new Set(catNames);
+  const selectedSubs = {};
+  catNames.forEach(c => selectedSubs[c] = new Set(gastoCatMap[c]));
+
+  // --- slider de meses ---
+  const rFrom = document.getElementById('rFrom');
+  const rTo = document.getElementById('rTo');
+  rFrom.max = rTo.max = MONTHS.length - 1;
+  rFrom.value = 0;
+  rTo.value = MONTHS.length - 1;
+  const trackFill = document.getElementById('trackFill');
+  const fromChip = document.getElementById('fromChip');
+  const toChip = document.getElementById('toChip');
+
+  function updateSliderUI() {
+    let lo = +rFrom.value, hi = +rTo.value;
+    if (lo > hi) { const t = lo; lo = hi; hi = t; }
+    fromChip.textContent = monthLabel(MONTHS[lo]);
+    toChip.textContent = monthLabel(MONTHS[hi]);
+    const max = Math.max(MONTHS.length - 1, 1);
+    trackFill.style.left = (lo / max * 100) + '%';
+    trackFill.style.width = ((hi - lo) / max * 100) + '%';
+  }
+  rFrom.addEventListener('input', () => { if (+rFrom.value > +rTo.value) rFrom.value = rTo.value; updateSliderUI(); render(); });
+  rTo.addEventListener('input', () => { if (+rTo.value < +rFrom.value) rTo.value = rFrom.value; updateSliderUI(); render(); });
+
+  function monthsInRange() {
+    const lo = Math.min(+rFrom.value, +rTo.value);
+    const hi = Math.max(+rFrom.value, +rTo.value);
+    return MONTHS.slice(lo, hi + 1);
+  }
+
+  // --- panel categoría ---
+  const catPanel = document.getElementById('catPanel');
+  catNames.forEach(c => {
+    const row = document.createElement('label');
+    row.className = 'fdd-row';
+    row.innerHTML = `<input type="checkbox" data-cat="${c}" checked><span>${c}</span>`;
+    catPanel.appendChild(row);
+  });
+  catPanel.addEventListener('change', e => {
+    const cat = e.target.getAttribute('data-cat');
+    if (e.target.checked) selectedCats.add(cat); else selectedCats.delete(cat);
+    updateCatSummary(); buildSubPanel(); render();
+  });
+  function updateCatSummary() {
+    document.getElementById('catCount').textContent = selectedCats.size === catNames.length ? '· Todas' : `· ${selectedCats.size} de ${catNames.length}`;
+  }
+
+  const subPanel = document.getElementById('subPanel');
+  function buildSubPanel() {
+    subPanel.innerHTML = '';
+    catNames.filter(c => selectedCats.has(c)).forEach(c => {
+      const title = document.createElement('div');
+      title.className = 'fdd-group-title';
+      title.textContent = c;
+      subPanel.appendChild(title);
+      gastoCatMap[c].forEach(s => {
+        const row = document.createElement('label');
+        row.className = 'fdd-row';
+        const checked = selectedSubs[c].has(s) ? 'checked' : '';
+        row.innerHTML = `<input type="checkbox" data-cat="${c}" data-sub="${s}" ${checked}><span>${s}</span>`;
+        subPanel.appendChild(row);
+      });
+    });
+    updateSubSummary();
+  }
+  subPanel.addEventListener('change', e => {
+    const cat = e.target.getAttribute('data-cat'), sub = e.target.getAttribute('data-sub');
+    if (e.target.checked) selectedSubs[cat].add(sub); else selectedSubs[cat].delete(sub);
+    updateSubSummary(); render();
+  });
+  function updateSubSummary() {
+    const total = catNames.reduce((s, c) => s + gastoCatMap[c].length, 0);
+    let sel = 0; catNames.forEach(c => sel += selectedSubs[c].size);
+    document.getElementById('subCount').textContent = sel === total ? '· Todas' : `· ${sel} de ${total}`;
+  }
+
+  buildSubPanel(); updateCatSummary(); updateSliderUI();
+
+  document.addEventListener('click', e => {
+    document.querySelectorAll('.fdd[open]').forEach(d => { if (!d.contains(e.target)) d.removeAttribute('open'); });
+  });
+
+  const fmt = n => (n < 0 ? "-$" : "$") + Math.round(Math.abs(n)).toLocaleString("es-CL");
+
+  function catValueReal(month, cat) {
+    if (!selectedCats.has(cat) || selectedSubs[cat].size === 0) return 0;
+    return txns
+      .filter(t => t.month === month && t.tipo === "Gasto" && t.categoria === cat && selectedSubs[cat].has(t.subcategoria))
+      .reduce((s, t) => s + Math.abs(t.monto), 0);
+  }
+  function catValuePresu(month, cat) {
+    if (!selectedCats.has(cat) || selectedSubs[cat].size === 0) return 0;
+    return presu
+      .filter(p => p.month === month && p.tipo === "Gasto" && p.categoria === cat && selectedSubs[cat].has(p.subcategoria))
+      .reduce((s, p) => s + Math.abs(p.monto), 0);
+  }
+  function visibleCats() { return catNames.filter(c => selectedCats.has(c) && selectedSubs[c].size > 0); }
+
+  let stackedCatChart, pieChart, rankChart, flowChart;
+
+  function render() {
+    const months = monthsInRange();
+    const vCats = visibleCats();
+
+    let gastoTotal = 0, ingresoTotal = 0;
+    months.forEach(m => {
+      gastoTotal += txns.filter(t => t.month === m && t.tipo === "Gasto").reduce((s, t) => s + Math.abs(t.monto), 0);
+      ingresoTotal += txns.filter(t => t.month === m && t.tipo === "Ingreso").reduce((s, t) => s + t.monto, 0);
+    });
+    const ahorroTotal = ingresoTotal - gastoTotal;
+
+    document.getElementById('kpiGasto').textContent = fmt(gastoTotal);
+    document.getElementById('kpiIngreso').textContent = fmt(ingresoTotal);
+    document.getElementById('kpiAhorro').textContent = fmt(ahorroTotal);
+
+    const catTotals = {}; vCats.forEach(c => catTotals[c] = months.reduce((s, m) => s + catValueReal(m, c), 0));
+
+    if (stackedCatChart) stackedCatChart.destroy();
+    stackedCatChart = new Chart(document.getElementById('stackedCatChart'), {
+      data: {
+        labels: months.map(monthLabel),
+        datasets: [
+          ...vCats.map(c => ({
+            type: 'bar', label: c,
+            data: months.map(m => catValueReal(m, c)),
+            backgroundColor: CAT_COLORS[c], stack: 'gasto', borderRadius: 3, maxBarThickness: 26
+          })),
+          {
+            type: 'line', label: 'Presupuesto',
+            data: months.map(m => vCats.reduce((s, c) => s + catValuePresu(m, c), 0)),
+            borderColor: INK, borderDash: [4,3], borderWidth: 1.5, pointRadius: 2, pointBackgroundColor: INK, fill: false
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 9 }, padding: 8, color: '#374151' } } },
+        scales: {
+          x: { stacked: true, grid: { display: false }, ticks: { font: { size: 9 }, color: '#6B7280' } },
+          y: { stacked: true, grid: { color: '#F3F4F6' }, ticks: { font: { size: 9 }, color: '#9CA3AF', callback: v => (v/1000)+'k' } }
+        }
+      }
+    });
+
+    if (pieChart) pieChart.destroy();
+    pieChart = new Chart(document.getElementById('pieChart'), {
+      type: 'doughnut',
+      data: { labels: vCats, datasets: [{ data: vCats.map(c => catTotals[c]), backgroundColor: vCats.map(c => CAT_COLORS[c]), borderWidth: 2, borderColor: '#fff' }] },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '64%',
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 9 }, padding: 6, color: '#374151' } } }
+      }
+    });
+
+    const ranked = vCats.map(c => ({ c, v: catTotals[c] })).sort((a, b) => b.v - a.v);
+    if (rankChart) rankChart.destroy();
+    rankChart = new Chart(document.getElementById('rankChart'), {
+      type: 'bar',
+      data: { labels: ranked.map(r => r.c), datasets: [{ data: ranked.map(r => r.v), backgroundColor: CHARCOAL, borderRadius: 4, maxBarThickness: 16 }] },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { display: false }, y: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#374151' } } }
+      }
+    });
+
+    if (flowChart) flowChart.destroy();
+    flowChart = new Chart(document.getElementById('flowChart'), {
+      type: 'bar',
+      data: {
+        labels: months.map(monthLabel),
+        datasets: [
+          {
+            label: 'Gasto',
+            data: months.map(m => txns.filter(t => t.month === m && t.tipo === "Gasto").reduce((s, t) => s + Math.abs(t.monto), 0)),
+            backgroundColor: RED, stack: 'flujo', borderRadius: 3, maxBarThickness: 26
+          },
+          {
+            label: 'Ahorro',
+            data: months.map(m => {
+              const g = txns.filter(t => t.month === m && t.tipo === "Gasto").reduce((s, t) => s + Math.abs(t.monto), 0);
+              const i = txns.filter(t => t.month === m && t.tipo === "Ingreso").reduce((s, t) => s + t.monto, 0);
+              return Math.max(i - g, 0);
+            }),
+            backgroundColor: GREEN, stack: 'flujo', borderRadius: 3, maxBarThickness: 26
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 9 }, padding: 8, color: '#374151' } } },
+        scales: {
+          x: { stacked: true, grid: { display: false }, ticks: { font: { size: 9 }, color: '#6B7280' } },
+          y: { stacked: true, grid: { color: '#F3F4F6' }, ticks: { font: { size: 9 }, color: '#9CA3AF', callback: v => (v/1000)+'k' } }
+        }
+      }
+    });
+  }
+
+  if (uncatCount > 0) {
+    const note = document.getElementById('uncatNote');
+    note.style.display = 'block';
+    note.textContent = `${uncatCount} movimiento(s) sin subcategoría reconocida — no se incluyen en los totales.`;
+  }
+
+  document.getElementById('status').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+  render();
+})();
+</script>
+</body>
+</html>
