@@ -51,6 +51,10 @@
 
   .section-title { font-size: 11px; letter-spacing: 0.03em; text-transform: uppercase; color: #6B7280; margin: 0 0 8px; font-weight: 600; }
 
+  .dual-legend-item { display: inline-flex; align-items: center; gap: 5px; font-size: 9px; color: #374151; }
+  .dual-legend-sw { display: inline-flex; gap: 1px; }
+  .dual-legend-sw span { width: 7px; height: 7px; border-radius: 2px; display: inline-block; }
+
   #status { font-size: 13px; color: #6B7280; padding: 2rem 0; text-align: center; }
   #warn { font-size: 11px; color: #B5453B; margin: 0 0 12px; display: none; }
 </style>
@@ -60,6 +64,7 @@
   <div id="status">Cargando datos del Sheet…</div>
   <div id="content" style="display:none;">
 
+    <p style="font-size: 10px; color: #B5453B; background:#FBEEEC; border-radius:6px; padding:4px 8px; margin:0 0 10px;">Vista previa — datos de ejemplo, no son tus datos reales</p>
     <p style="font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: #9CA3AF; margin: 0 0 6px;">Periodo</p>
     <div class="rangebox">
       <span class="chip" id="fromChip">—</span>
@@ -87,38 +92,29 @@
     <p id="warn"></p>
 
     <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 1.4rem;">
-      <div class="kpi" style="background: #FBEEEC;">
-        <p class="label" style="color:#B5453B;">Gasto</p>
-        <p class="value" id="kpiGasto" style="color:#B5453B;">—</p>
+      <div class="kpi" style="background: #FFE5E0;">
+        <p class="label" style="color:#C20000;">Gasto</p>
+        <p class="value" id="kpiGasto" style="color:#C20000;">—</p>
       </div>
-      <div class="kpi" style="background: #EAF3EE;">
-        <p class="label" style="color:#3E7A56;">Ingreso</p>
-        <p class="value" id="kpiIngreso" style="color:#3E7A56;">—</p>
+      <div class="kpi" style="background: #DCFCE7;">
+        <p class="label" style="color:#15803D;">Ingreso</p>
+        <p class="value" id="kpiIngreso" style="color:#15803D;">—</p>
       </div>
-      <div class="kpi" style="background: #374151;">
-        <p class="label" style="color:#D1D5DB;">Ahorro</p>
+      <div class="kpi" style="background: #1F2937;">
+        <p class="label" style="color:#94A3B8;">Ahorro</p>
         <p class="value" id="kpiAhorro" style="color:#fff;">—</p>
       </div>
     </div>
 
     <p class="section-title">Gasto Real V/S Presupuesto</p>
-    <div style="position: relative; height: 190px; margin-bottom: 1.6rem;">
+    <div style="position: relative; height: 190px;">
       <canvas id="stackedCatChart"></canvas>
     </div>
+    <div id="stackedLegend" style="display:flex; flex-wrap:wrap; gap: 4px 10px; margin: 6px 0 1.6rem;"></div>
 
-    <div class="twocol" style="margin-bottom: 1.6rem;">
-      <div>
-        <p class="section-title">Gastos</p>
-        <div style="position: relative; height: 170px;">
-          <canvas id="pieChart"></canvas>
-        </div>
-      </div>
-      <div>
-        <p class="section-title">Ranking de Gastos</p>
-        <div style="position: relative; height: 170px;">
-          <canvas id="rankChart"></canvas>
-        </div>
-      </div>
+    <p class="section-title">Ranking de Gastos</p>
+    <div style="position: relative; height: 220px; margin-bottom: 1.6rem;">
+      <canvas id="rankChart"></canvas>
     </div>
 
     <p class="section-title">Ingreso | Gasto | Ahorro</p>
@@ -131,17 +127,25 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script>
+if (window.ChartDataLabels) Chart.register(ChartDataLabels);
 const SHEET_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRMLMr2pGrS2hAfaaCsOw6dE5S0BjGfG8JQurCvLUSGQVwncycptUmZwHtr0hrhuCWtksKSVDbvNxVn/pub?single=true&output=csv&gid=";
 const GID = { D: "422426543", C: "0", I: "1295296830", P: "1156383057", R: "815960230" };
 
-const RED = "#B5453B";
-const GREEN = "#5B7F6B";
+const RED = "#EA0000";
+const AHORRO_BLUEGRAY = "#334155";
 const CHARCOAL = "#374151";
 const INK = "#111827";
-const GRAY_DEUDA = "#9CA3AF";
-const PALETTE = ["#0F2E36","#153E48","#1D4F5C","#25636B","#2E7680","#3D8A8C","#4F9AA0","#6FB3AC","#86C0BA","#A6D4C9","#BFE0D6"];
+const RED_PALETTE = ["#C20000","#CF0000","#DD0000","#EA0000","#F80000","#FF3816","#FF6737","#FF8B55","#FFAB74"];
+const GRAY_PALETTE = ["#111827","#1F2937","#374151","#4B5563","#6B7280","#7C8592","#8B93A0","#9CA3AF","#AEB4BD","#C2C7CE","#D6D9DE"];
 const MES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+
+function hexToRgba(hex, alpha) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0,2), 16), g = parseInt(h.substring(2,4), 16), b = parseInt(h.substring(4,6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 function parseCSV(text) {
   const lines = text.replace(/\r\n/g, "\n").split("\n").filter(l => l.length > 0);
@@ -202,9 +206,34 @@ async function loadCSV(gid) {
 (async function init() {
   let D, C, I, P, R;
   try {
-    [D, C, I, P, R] = await Promise.all([
-      loadCSV(GID.D), loadCSV(GID.C), loadCSV(GID.I), loadCSV(GID.P), loadCSV(GID.R)
-    ]);
+    // DATOS DE EJEMPLO (preview offline, sin fetch al Sheet) — no reemplaza el fetch real en producción
+    R = [
+      {Tipo:"Gasto",Categoría:"Alimentación",Subcategoría:"Supermercado"},
+      {Tipo:"Gasto",Categoría:"Vivienda",Subcategoría:"Arriendo"},
+      {Tipo:"Gasto",Categoría:"Vivienda",Subcategoría:"Servicios básicos"},
+      {Tipo:"Gasto",Categoría:"Transporte",Subcategoría:"Bencina"},
+      {Tipo:"Gasto",Categoría:"Ocio",Subcategoría:"Consumo"},
+      {Tipo:"Gasto",Categoría:"Salud",Subcategoría:"Consultas"},
+      {Tipo:"Gasto",Categoría:"Deudas",Subcategoría:"Tarjetas"},
+      {Tipo:"Ingreso",Categoría:"Sueldo",Subcategoría:"Sueldo Fijo"}
+    ];
+    const meses = ["06-2026","07-2026","08-2026"];
+    const gasto = [
+      ["Supermercado",180000],["Arriendo",450000],["Servicios básicos",95000],
+      ["Bencina",60000],["Consumo",120000],["Consultas",35000],["Tarjetas",70000]
+    ];
+    D = []; C = []; I = [];
+    meses.forEach((mm, i) => {
+      gasto.forEach(([sub, base], j) => {
+        const monto = base + (i * 5000) + (j * 1000);
+        D.push({ fecha: "0"+(5+j)+"-"+mm, subcategoria: sub, monto: String(monto) });
+      });
+      D.push({ fecha: "01-"+mm, subcategoria: "Sueldo Fijo", monto: String(1400000 + i*20000) });
+    });
+    P = [];
+    meses.forEach(mm => {
+      gasto.forEach(([sub, base]) => P.push({ Fecha: "01-"+mm, subcategoria: sub, monto: String(Math.round(base*1.1)) }));
+    });
   } catch (e) {
     document.getElementById("status").textContent = "No se pudieron cargar los datos. Revisa tu conexión o que el Sheet siga publicado.";
     return;
@@ -269,10 +298,11 @@ async function loadCSV(gid) {
   const gastoCatMap = reglasByTipoCat["Gasto"] || {};
   const catNames = Object.keys(gastoCatMap).sort();
   const CAT_COLORS = {};
+  const CAT_COLORS_PRESU = {};
   let pIdx = 0;
   catNames.forEach(c => {
-    if (c === "Deuda") { CAT_COLORS[c] = GRAY_DEUDA; return; }
-    CAT_COLORS[c] = PALETTE[pIdx % PALETTE.length];
+    CAT_COLORS[c] = RED_PALETTE[pIdx % RED_PALETTE.length];
+    CAT_COLORS_PRESU[c] = GRAY_PALETTE[pIdx % GRAY_PALETTE.length];
     pIdx++;
   });
 
@@ -361,6 +391,7 @@ async function loadCSV(gid) {
   });
 
   const fmt = n => (n < 0 ? "-$" : "$") + Math.round(Math.abs(n)).toLocaleString("es-CL");
+  const fmtK = n => (n < 0 ? "-$" : "$") + Math.round(Math.abs(n)/1000).toLocaleString("es-CL") + "k";
 
   function catValueReal(month, cat) {
     if (!selectedCats.has(cat) || selectedSubs[cat].size === 0) return 0;
@@ -376,7 +407,7 @@ async function loadCSV(gid) {
   }
   function visibleCats() { return catNames.filter(c => selectedCats.has(c) && selectedSubs[c].size > 0); }
 
-  let stackedCatChart, pieChart, rankChart, flowChart;
+  let stackedCatChart, rankChart, flowChart;
 
   function render() {
     const months = monthsInRange();
@@ -403,43 +434,70 @@ async function loadCSV(gid) {
           ...vCats.map(c => ({
             type: 'bar', label: c,
             data: months.map(m => catValueReal(m, c)),
-            backgroundColor: CAT_COLORS[c], stack: 'gasto', borderRadius: 3, maxBarThickness: 26
+            backgroundColor: CAT_COLORS[c], stack: 'real', borderRadius: 3, maxBarThickness: 22
           })),
-          {
-            type: 'line', label: 'Presupuesto',
-            data: months.map(m => vCats.reduce((s, c) => s + catValuePresu(m, c), 0)),
-            borderColor: INK, borderDash: [4,3], borderWidth: 1.5, pointRadius: 2, pointBackgroundColor: INK, fill: false
-          }
+          ...vCats.map(c => ({
+            type: 'bar', label: c,
+            data: months.map(m => catValuePresu(m, c)),
+            backgroundColor: CAT_COLORS_PRESU[c], stack: 'presupuesto', borderRadius: 3, maxBarThickness: 22
+          }))
         ]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 9 }, padding: 8, color: '#374151' } } },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => {
+            const grp = ctx.dataset.stack === 'presupuesto' ? ' (presupuesto)' : ' (real)';
+            return `${ctx.dataset.label}${grp}: ${fmt(ctx.parsed.y)}`;
+          } } },
+          datalabels: { display: false }
+        },
         scales: {
           x: { stacked: true, grid: { display: false }, ticks: { font: { size: 9 }, color: '#6B7280' } },
-          y: { stacked: true, grid: { color: '#F3F4F6' }, ticks: { font: { size: 9 }, color: '#9CA3AF', callback: v => (v/1000)+'k' } }
+          y: { stacked: true, grid: { color: '#F3F4F6' }, ticks: { font: { size: 9 }, color: '#9CA3AF', callback: v => Math.round(v/1000).toLocaleString('es-CL')+'k' } }
         }
       }
     });
 
-    if (pieChart) pieChart.destroy();
-    pieChart = new Chart(document.getElementById('pieChart'), {
-      type: 'doughnut',
-      data: { labels: vCats, datasets: [{ data: vCats.map(c => catTotals[c]), backgroundColor: vCats.map(c => CAT_COLORS[c]), borderWidth: 2, borderColor: '#fff' }] },
-      options: {
-        responsive: true, maintainAspectRatio: false, cutout: '64%',
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 9 }, padding: 6, color: '#374151' } } }
-      }
-    });
+    document.getElementById('stackedLegend').innerHTML = vCats.map(c => `
+      <span class="dual-legend-item">
+        <span class="dual-legend-sw"><span style="background:${CAT_COLORS[c]}"></span><span style="background:${CAT_COLORS_PRESU[c]}"></span></span>
+        ${c}
+      </span>
+    `).join('');
 
+    const gastoVisibleTotal = vCats.reduce((s, c) => s + catTotals[c], 0);
     const ranked = vCats.map(c => ({ c, v: catTotals[c] })).sort((a, b) => b.v - a.v);
     if (rankChart) rankChart.destroy();
     rankChart = new Chart(document.getElementById('rankChart'), {
       type: 'bar',
-      data: { labels: ranked.map(r => r.c), datasets: [{ data: ranked.map(r => r.v), backgroundColor: CHARCOAL, borderRadius: 4, maxBarThickness: 16 }] },
+      data: { labels: ranked.map(r => r.c), datasets: [{ data: ranked.map(r => r.v), backgroundColor: ranked.map(r => CAT_COLORS[r.c]), borderRadius: 4, maxBarThickness: 16 }] },
       options: {
         indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        layout: { padding: { right: 34 } },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => {
+            const v = ctx.parsed.x;
+            const pct = gastoVisibleTotal > 0 ? ' (' + (v / gastoVisibleTotal * 100).toFixed(1) + '%)' : '';
+            return fmt(v) + pct;
+          } } },
+          datalabels: {
+            labels: {
+              monto: {
+                anchor: 'center', align: 'center', clip: true,
+                color: '#fff', font: { size: 8, weight: '600' },
+                formatter: v => fmtK(v)
+              },
+              pct: {
+                anchor: 'end', align: 'end', clamp: true, clip: false,
+                color: '#374151', font: { size: 9 },
+                formatter: v => gastoVisibleTotal > 0 ? (v / gastoVisibleTotal * 100).toFixed(1) + '%' : ''
+              }
+            }
+          }
+        },
         scales: { x: { display: false }, y: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#374151' } } }
       }
     });
@@ -462,16 +520,20 @@ async function loadCSV(gid) {
               const i = txns.filter(t => t.month === m && t.tipo === "Ingreso").reduce((s, t) => s + t.monto, 0);
               return Math.max(i - g, 0);
             }),
-            backgroundColor: GREEN, stack: 'flujo', borderRadius: 3, maxBarThickness: 26
+            backgroundColor: AHORRO_BLUEGRAY, stack: 'flujo', borderRadius: 3, maxBarThickness: 26
           }
         ]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 9 }, padding: 8, color: '#374151' } } },
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 9 }, padding: 8, color: '#374151' } },
+          tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}` } },
+          datalabels: { display: false }
+        },
         scales: {
           x: { stacked: true, grid: { display: false }, ticks: { font: { size: 9 }, color: '#6B7280' } },
-          y: { stacked: true, grid: { color: '#F3F4F6' }, ticks: { font: { size: 9 }, color: '#9CA3AF', callback: v => (v/1000)+'k' } }
+          y: { stacked: true, grid: { color: '#F3F4F6' }, ticks: { font: { size: 9 }, color: '#9CA3AF', callback: v => Math.round(v/1000).toLocaleString('es-CL')+'k' } }
         }
       }
     });
