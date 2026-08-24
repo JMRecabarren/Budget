@@ -64,7 +64,6 @@
   <div id="status">Cargando datos del Sheet…</div>
   <div id="content" style="display:none;">
 
-    <p style="font-size: 10px; color: #B5453B; background:#FBEEEC; border-radius:6px; padding:4px 8px; margin:0 0 10px;">Vista previa — datos de ejemplo, no son tus datos reales</p>
     <p style="font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: #9CA3AF; margin: 0 0 6px;">Periodo</p>
     <div class="rangebox">
       <span class="chip" id="fromChip">—</span>
@@ -206,34 +205,9 @@ async function loadCSV(gid) {
 (async function init() {
   let D, C, I, P, R;
   try {
-    // DATOS DE EJEMPLO (preview offline, sin fetch al Sheet) — no reemplaza el fetch real en producción
-    R = [
-      {Tipo:"Gasto",Categoría:"Alimentación",Subcategoría:"Supermercado"},
-      {Tipo:"Gasto",Categoría:"Vivienda",Subcategoría:"Arriendo"},
-      {Tipo:"Gasto",Categoría:"Vivienda",Subcategoría:"Servicios básicos"},
-      {Tipo:"Gasto",Categoría:"Transporte",Subcategoría:"Bencina"},
-      {Tipo:"Gasto",Categoría:"Ocio",Subcategoría:"Consumo"},
-      {Tipo:"Gasto",Categoría:"Salud",Subcategoría:"Consultas"},
-      {Tipo:"Gasto",Categoría:"Deudas",Subcategoría:"Tarjetas"},
-      {Tipo:"Ingreso",Categoría:"Sueldo",Subcategoría:"Sueldo Fijo"}
-    ];
-    const meses = ["06-2026","07-2026","08-2026"];
-    const gasto = [
-      ["Supermercado",180000],["Arriendo",450000],["Servicios básicos",95000],
-      ["Bencina",60000],["Consumo",120000],["Consultas",35000],["Tarjetas",70000]
-    ];
-    D = []; C = []; I = [];
-    meses.forEach((mm, i) => {
-      gasto.forEach(([sub, base], j) => {
-        const monto = base + (i * 5000) + (j * 1000);
-        D.push({ fecha: "0"+(5+j)+"-"+mm, subcategoria: sub, monto: String(monto) });
-      });
-      D.push({ fecha: "01-"+mm, subcategoria: "Sueldo Fijo", monto: String(1400000 + i*20000) });
-    });
-    P = [];
-    meses.forEach(mm => {
-      gasto.forEach(([sub, base]) => P.push({ Fecha: "01-"+mm, subcategoria: sub, monto: String(Math.round(base*1.1)) }));
-    });
+    [D, C, I, P, R] = await Promise.all([
+      loadCSV(GID.D), loadCSV(GID.C), loadCSV(GID.I), loadCSV(GID.P), loadCSV(GID.R)
+    ]);
   } catch (e) {
     document.getElementById("status").textContent = "No se pudieron cargar los datos. Revisa tu conexión o que el Sheet siga publicado.";
     return;
