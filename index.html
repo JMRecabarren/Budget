@@ -26,9 +26,6 @@
   .fdd-group-title:first-child { margin-top: 0; }
   .fdd-row input { accent-color: #374151; }
 
-  .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  @media (max-width: 380px) { .twocol { grid-template-columns: 1fr !important; } }
-
   .yearsel { font-size: 13px; font-weight: 600; padding: 6px 10px; border-radius: 8px; border: 1px solid #E5E7EB; background: #fff; color: #111827; }
 
   .monthrow { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 8px; margin: 8px 0 6px; -webkit-overflow-scrolling: touch; }
@@ -102,23 +99,14 @@
     </div>
 
     <p class="section-title">Gasto Real V/S Presupuesto</p>
-    <div style="position: relative; height: 190px; margin-bottom: 1.6rem;">
+    <div style="position: relative; height: 190px; margin-bottom: 0.4rem;">
       <canvas id="stackedCatChart"></canvas>
     </div>
+    <p style="font-size: 11px; color: #B0B5BC; margin: 0 0 1.6rem;">Barra clara = Presupuesto · barra sólida = Gasto real.</p>
 
-    <div class="twocol" style="margin-bottom: 1.6rem;">
-      <div>
-        <p class="section-title">Gastos</p>
-        <div style="position: relative; height: 170px;">
-          <canvas id="pieChart"></canvas>
-        </div>
-      </div>
-      <div>
-        <p class="section-title">Ranking de Gastos</p>
-        <div style="position: relative; height: 170px;">
-          <canvas id="rankChart"></canvas>
-        </div>
-      </div>
+    <p class="section-title">Ranking de Gastos</p>
+    <div style="position: relative; height: 210px; margin-bottom: 1.6rem;">
+      <canvas id="rankChart"></canvas>
     </div>
 
     <p class="section-title">Ingreso | Gasto | Ahorro</p>
@@ -137,13 +125,20 @@ const SHEET_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRMLMr2pGrS2
 const GID = { D: "422426543", C: "0", I: "1295296830", P: "1156383057", R: "815960230" };
 
 const RED = "#B5453B";
-const GREEN = "#5B7F6B";
+const GREEN = "#3E7A56";
 const CHARCOAL = "#374151";
 const INK = "#111827";
 const GRAY_DEUDA = "#9CA3AF";
-const PALETTE = ["#0F2E36","#153E48","#1D4F5C","#25636B","#2E7680","#3D8A8C","#4F9AA0","#6FB3AC","#86C0BA","#A6D4C9","#BFE0D6"];
+// Paleta de gasto: siempre en tonos rojos (una sombra distinta por categoría, todas dentro de la familia roja).
+const PALETTE = ["#5C1A16","#7A241E","#96302A","#B5453B","#C15850","#CB6D64","#D48179","#DC9791","#E4ADA8","#EBC3BF","#F2D9D6"];
 const MES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 const MES_NUMS = ["01","02","03","04","05","06","07","08","09","10","11","12"];
+
+function hexToRgba(hex, alpha) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0,2), 16), g = parseInt(h.substring(2,4), 16), b = parseInt(h.substring(4,6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 function parseCSV(text) {
   const lines = text.replace(/\r\n/g, "\n").split("\n").filter(l => l.length > 0);
@@ -459,7 +454,39 @@ async function loadCSV(gid) {
     return txns.filter(t => t.month === m && t.tipo === "Ingreso").reduce((s, t) => s + t.monto, 0);
   }
 
-  let stackedCatChart, pieChart, rankChart, flowChart;
+  let stackedCatChart, rankChart, flowChart;
+
+  // Plugin: dibuja el monto dentro de la barra y el % afuera, para el ranking de gastos.
+  const rankLabelsPlugin = {
+    id: 'rankLabels',
+    afterDatasetsDraw(chart) {
+      if (chart.canvas.id !== 'rankChart') return;
+      const { ctx } = chart;
+      const meta = chart.getDatasetMeta(0);
+      const dataset = chart.data.datasets[0];
+      const total = dataset._total || 0;
+      ctx.save();
+      ctx.font = '600 10px -apple-system, Helvetica Neue, Arial, sans-serif';
+      ctx.textBaseline = 'middle';
+      meta.data.forEach((bar, i) => {
+        const value = dataset.data[i];
+        if (!value) return;
+        const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+        const montoText = fmt(value);
+        const montoWidth = ctx.measureText(montoText).width;
+        const fitsInside = (bar.x - bar.base) > montoWidth + 14;
+        ctx.textAlign = fitsInside ? 'right' : 'left';
+        ctx.fillStyle = fitsInside ? '#fff' : CHARCOAL;
+        ctx.fillText(montoText, fitsInside ? (bar.x - 6) : (bar.x + 6), bar.y);
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#9CA3AF';
+        ctx.font = '500 9px -apple-system, Helvetica Neue, Arial, sans-serif';
+        ctx.fillText(pct + '%', bar.x + (fitsInside ? 6 : montoWidth + 14), bar.y);
+        ctx.font = '600 10px -apple-system, Helvetica Neue, Arial, sans-serif';
+      });
+      ctx.restore();
+    }
+  };
 
   function render() {
     const months = monthsInRange();
@@ -481,20 +508,21 @@ async function loadCSV(gid) {
         labels: months.map(monthLabel),
         datasets: [
           ...vCats.map(c => ({
+            type: 'bar', label: c + ' (presupuesto)',
+            data: months.map(m => catValuePresu(m, c)),
+            backgroundColor: hexToRgba(CAT_COLORS[c], 0.35), stack: 'presupuesto', borderRadius: 3, maxBarThickness: 22,
+            _isPresu: true
+          })),
+          ...vCats.map(c => ({
             type: 'bar', label: c,
             data: months.map(m => catValueReal(m, c)),
-            backgroundColor: CAT_COLORS[c], stack: 'gasto', borderRadius: 3, maxBarThickness: 26
-          })),
-          {
-            type: 'line', label: 'Presupuesto',
-            data: months.map(m => vCats.reduce((s, c) => s + catValuePresu(m, c), 0)),
-            borderColor: INK, borderDash: [4,3], borderWidth: 1.5, pointRadius: 2, pointBackgroundColor: INK, fill: false
-          }
+            backgroundColor: CAT_COLORS[c], stack: 'gasto', borderRadius: 3, maxBarThickness: 22
+          }))
         ]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 9 }, padding: 8, color: '#374151' } } },
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 9 }, padding: 8, color: '#374151', filter: item => !item.text.endsWith(' (presupuesto)') } } },
         scales: {
           x: { stacked: true, grid: { display: false }, ticks: { font: { size: 9 }, color: '#6B7280' } },
           y: { stacked: true, grid: { color: '#F3F4F6' }, ticks: { font: { size: 9 }, color: '#9CA3AF', callback: v => (v/1000)+'k' } }
@@ -502,27 +530,19 @@ async function loadCSV(gid) {
       }
     });
 
-    const pieVals = vCats.map(c => catTotals[c]);
-    if (pieChart) pieChart.destroy();
-    pieChart = new Chart(document.getElementById('pieChart'), {
-      type: 'doughnut',
-      data: { labels: vCats, datasets: [{ data: pieVals, backgroundColor: vCats.map(c => CAT_COLORS[c]), borderWidth: 2, borderColor: '#fff' }] },
-      options: {
-        responsive: true, maintainAspectRatio: false, cutout: '64%',
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 9 }, padding: 6, color: '#374151' } } }
-      }
-    });
-
     const ranked = vCats.map(c => ({ c, v: catTotals[c] })).sort((a, b) => b.v - a.v);
+    const rankTotal = ranked.reduce((s, r) => s + r.v, 0);
     if (rankChart) rankChart.destroy();
     rankChart = new Chart(document.getElementById('rankChart'), {
       type: 'bar',
-      data: { labels: ranked.map(r => r.c), datasets: [{ data: ranked.map(r => r.v), backgroundColor: CHARCOAL, borderRadius: 4, maxBarThickness: 16 }] },
+      data: { labels: ranked.map(r => r.c), datasets: [{ data: ranked.map(r => r.v), backgroundColor: RED, borderRadius: 4, maxBarThickness: 16, _total: rankTotal }] },
       options: {
         indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        layout: { padding: { right: 34 } },
         plugins: { legend: { display: false } },
         scales: { x: { display: false }, y: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#374151' } } }
-      }
+      },
+      plugins: [rankLabelsPlugin]
     });
 
     if (flowChart) flowChart.destroy();
@@ -539,7 +559,7 @@ async function loadCSV(gid) {
           {
             label: 'Ahorro',
             data: months.map(m => Math.max(ingresoMes(m) - gastoNetoMes(m), 0)),
-            backgroundColor: GREEN, stack: 'flujo', borderRadius: 3, maxBarThickness: 26
+            backgroundColor: CHARCOAL, stack: 'flujo', borderRadius: 3, maxBarThickness: 26
           }
         ]
       },
