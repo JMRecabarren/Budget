@@ -102,7 +102,6 @@
     <div style="position: relative; height: 190px; margin-bottom: 0.4rem;">
       <canvas id="stackedCatChart"></canvas>
     </div>
-    <p style="font-size: 11px; color: #B0B5BC; margin: 0 0 1.6rem;">Barra clara = Presupuesto · barra sólida = Gasto real.</p>
 
     <p class="section-title">Ranking de Gastos</p>
     <div style="position: relative; height: 210px; margin-bottom: 1.6rem;">
@@ -128,17 +127,14 @@ const RED = "#B5453B";
 const GREEN = "#3E7A56";
 const CHARCOAL = "#374151";
 const INK = "#111827";
-const GRAY_DEUDA = "#9CA3AF";
-// Paleta de gasto: siempre en tonos rojos (una sombra distinta por categoría, todas dentro de la familia roja).
+// Paleta de gasto: siempre en tonos rojos (una sombra distinta por categoría, todas dentro de la familia roja — incluida Deuda).
 const PALETTE = ["#5C1A16","#7A241E","#96302A","#B5453B","#C15850","#CB6D64","#D48179","#DC9791","#E4ADA8","#EBC3BF","#F2D9D6"];
+// Paleta de presupuesto: la misma familia gris azulada del Ahorro (sólida, sin transparencia), una sombra por categoría.
+const PALETTE_PRESU = ["#0F172A","#1E293B","#29394D","#374151","#46566B","#566780","#687B95","#7C8FA8","#96A6BC","#B3BFCF","#D2D9E3"];
 const MES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 const MES_NUMS = ["01","02","03","04","05","06","07","08","09","10","11","12"];
 
-function hexToRgba(hex, alpha) {
-  const h = hex.replace('#', '');
-  const r = parseInt(h.substring(0,2), 16), g = parseInt(h.substring(2,4), 16), b = parseInt(h.substring(4,6), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
+const fmtK = n => (n < 0 ? "-$" : "$") + Math.round(Math.abs(n) / 1000) + "k";
 
 function parseCSV(text) {
   const lines = text.replace(/\r\n/g, "\n").split("\n").filter(l => l.length > 0);
@@ -267,11 +263,10 @@ async function loadCSV(gid) {
   const gastoCatMap = reglasByTipoCat["Gasto"] || {};
   const catNames = Object.keys(gastoCatMap).sort();
   const CAT_COLORS = {};
-  let pIdx = 0;
-  catNames.forEach(c => {
-    if (c === "Deuda") { CAT_COLORS[c] = GRAY_DEUDA; return; }
-    CAT_COLORS[c] = PALETTE[pIdx % PALETTE.length];
-    pIdx++;
+  const CAT_COLORS_PRESU = {};
+  catNames.forEach((c, i) => {
+    CAT_COLORS[c] = PALETTE[i % PALETTE.length];
+    CAT_COLORS_PRESU[c] = PALETTE_PRESU[i % PALETTE_PRESU.length];
   });
 
   const selectedCats = new Set(catNames);
@@ -472,7 +467,7 @@ async function loadCSV(gid) {
         const value = dataset.data[i];
         if (!value) return;
         const pct = total > 0 ? Math.round((value / total) * 100) : 0;
-        const montoText = fmt(value);
+        const montoText = fmtK(value);
         const montoWidth = ctx.measureText(montoText).width;
         const fitsInside = (bar.x - bar.base) > montoWidth + 14;
         ctx.textAlign = fitsInside ? 'right' : 'left';
@@ -510,8 +505,7 @@ async function loadCSV(gid) {
           ...vCats.map(c => ({
             type: 'bar', label: c + ' (presupuesto)',
             data: months.map(m => catValuePresu(m, c)),
-            backgroundColor: hexToRgba(CAT_COLORS[c], 0.35), stack: 'presupuesto', borderRadius: 3, maxBarThickness: 22,
-            _isPresu: true
+            backgroundColor: CAT_COLORS_PRESU[c], stack: 'presupuesto', borderRadius: 3, maxBarThickness: 22
           })),
           ...vCats.map(c => ({
             type: 'bar', label: c,
