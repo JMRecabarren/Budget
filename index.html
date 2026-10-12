@@ -62,6 +62,8 @@
   .desv-row .d-name { flex: 1; color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .desv-row .d-amounts { flex: 0 0 auto; color: #9CA3AF; font-size: 10px; text-align: right; }
   .desv-row .d-pct { flex: 0 0 auto; font-weight: 700; font-size: 11px; padding: 2px 7px; border-radius: 5px; min-width: 38px; text-align: center; }
+  .desv-row.desv-total { margin-top: 10px; }
+  .desv-row.desv-total:first-child { margin-top: 0; }
   .desv-row.desv-total .d-name { font-weight: 700; color: #111827; }
   .desv-row.desv-sub .d-name { padding-left: 12px; color: #6B7280; font-size: 11px; font-weight: 400; }
   .desv-row.desv-sub { border-bottom: 1px dashed #F3F4F6; }
@@ -129,7 +131,7 @@
       <canvas id="stackedCatChart"></canvas>
     </div>
 
-    <p class="section-title" style="margin-top: 1.2rem;">Desviación vs Presupuesto</p>
+    <p class="section-title" style="margin-top: 1.2rem;">Real V/S Presupuesto</p>
     <div id="desvTable" style="margin-bottom: 1.6rem;"></div>
 
     <p class="section-title">Ranking de Gastos</p>
@@ -559,13 +561,9 @@ async function loadCSV(gid) {
 
       if (catReal === 0 && catPresu === 0 && subRows.length === 0) return;
       any = true;
-      const catEl = document.createElement('div');
-      catEl.className = 'detail-cat';
-      catEl.textContent = c;
-      container.appendChild(catEl);
 
       if (catReal !== 0 || catPresu !== 0) {
-        container.appendChild(desvRowEl(c, catReal, catPresu, hasSubBreakdown, false));
+        container.appendChild(desvRowEl(c, catReal, catPresu, true, false));
       }
       subRows.forEach(r => container.appendChild(desvRowEl(r.name, r.real, r.presu, false, true)));
     });
