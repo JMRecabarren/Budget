@@ -49,12 +49,25 @@
 
   .detail-cat { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: #374151; margin: 12px 0 3px; }
   .detail-cat:first-child { margin-top: 0; }
+  .detail-cat.income { color: #3E7A56; }
   .detail-row { display: flex; align-items: baseline; gap: 8px; font-size: 12px; padding: 3px 0; border-bottom: 1px solid #F3F4F6; }
   .detail-row .d-fecha { flex: 0 0 32px; color: #9CA3AF; font-size: 10px; }
   .detail-row .d-glosa { flex: 1; color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .detail-row .d-monto { flex: 0 0 auto; color: #B5453B; font-weight: 600; }
+  .detail-row .d-monto.income { color: #3E7A56; }
   .detail-empty { font-size: 12px; color: #9CA3AF; padding: 4px 0; }
   #detailTable { max-height: 420px; overflow-y: auto; }
+
+  .desv-row { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 5px 0; border-bottom: 1px solid #F3F4F6; }
+  .desv-row .d-name { flex: 1; color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .desv-row .d-amounts { flex: 0 0 auto; color: #9CA3AF; font-size: 10px; text-align: right; }
+  .desv-row .d-pct { flex: 0 0 auto; font-weight: 700; font-size: 11px; padding: 2px 7px; border-radius: 5px; min-width: 38px; text-align: center; }
+  .desv-row.desv-total .d-name { font-weight: 700; color: #111827; }
+  .desv-row.desv-sub .d-name { padding-left: 12px; color: #6B7280; font-size: 11px; font-weight: 400; }
+  .desv-row.desv-sub { border-bottom: 1px dashed #F3F4F6; }
+  .d-pct.good { background: #EAF3EE; color: #3E7A56; }
+  .d-pct.bad { background: #FBEEEC; color: #B5453B; }
+  .d-pct.neutral { background: #F3F4F6; color: #9CA3AF; }
 
   #status { font-size: 13px; color: #6B7280; padding: 2rem 0; text-align: center; }
 </style>
@@ -116,12 +129,15 @@
       <canvas id="stackedCatChart"></canvas>
     </div>
 
+    <p class="section-title" style="margin-top: 1.2rem;">Desviación vs Presupuesto</p>
+    <div id="desvTable" style="margin-bottom: 1.6rem;"></div>
+
     <p class="section-title">Ranking de Gastos</p>
     <div style="position: relative; height: 210px; margin-bottom: 1.6rem;">
       <canvas id="rankChart"></canvas>
     </div>
 
-    <p class="section-title">Detalle de Gastos</p>
+    <p class="section-title">Detalle de Movimientos</p>
     <div id="detailTable"></div>
 
     <p id="uncatNote" style="font-size: 11px; color: #B0B5BC; margin-top: 1.2rem; display:none;"></p>
@@ -252,7 +268,7 @@ async function loadCSV(gid) {
       const hit = map[sub.toLowerCase()];
       if (!hit) { uncatCount++; return; }
       const monto = parseMonto(row[montoField]);
-      out.push({ month, tipo: hit.tipo, categoria: hit.categoria, subcategoria: sub, monto, glosa, fecha: fechaRaw });
+      out.push({ month, tipo: hit.tipo, categoria: hit.categoria, subcategoria: sub, monto, glosa, fecha: fechaRaw, origen });
     });
     return out;
   }
@@ -446,12 +462,16 @@ async function loadCSV(gid) {
 
   const fmt = n => (n < 0 ? "-$" : "$") + Math.round(Math.abs(n)).toLocaleString("es-CL");
 
+  // Monto de un Gasto: Débito/Crédito salen negativos (gasto = -monto); Internacional viene positivo.
+  // Así un reembolso positivo con subcategoría de gasto (ej. Supermercado) se netea solo.
+  const gastoAmt = t => t.origen === "Internacional" ? t.monto : -t.monto;
+
   function catValueReal(month, cat) {
     if (!selectedCats.has(cat) || selectedSubs[cat].size === 0) return 0;
     const subs = selectedSubs[cat];
     let total = txns
       .filter(t => t.month === month && t.tipo === "Gasto" && t.categoria === cat && subs.has(t.subcategoria))
-      .reduce((s, t) => s + Math.abs(t.monto), 0);
+      .reduce((s, t) => s + gastoAmt(t), 0);
     if (cat === "Vivienda" && subs.has("Arriendo")) total -= arriendoNetAdjustment(month);
     return total;
   }
@@ -463,8 +483,22 @@ async function loadCSV(gid) {
   }
   function visibleCats() { return catNames.filter(c => selectedCats.has(c) && selectedSubs[c].size > 0); }
 
+  // Real/Presupuesto a nivel de una subcategoría puntual (para decidir granularidad de la comparación).
+  function subValueReal(month, cat, sub) {
+    let total = txns
+      .filter(t => t.month === month && t.tipo === "Gasto" && t.categoria === cat && t.subcategoria === sub)
+      .reduce((s, t) => s + gastoAmt(t), 0);
+    if (cat === "Vivienda" && sub === "Arriendo") total -= arriendoNetAdjustment(month);
+    return total;
+  }
+  function subValuePresu(month, cat, sub) {
+    return presu
+      .filter(p => p.month === month && p.tipo === "Gasto" && p.categoria === cat && p.subcategoria === sub)
+      .reduce((s, p) => s + Math.abs(p.monto), 0);
+  }
+
   function gastoBrutoMes(m) {
-    return txns.filter(t => t.month === m && t.tipo === "Gasto").reduce((s, t) => s + Math.abs(t.monto), 0);
+    return txns.filter(t => t.month === m && t.tipo === "Gasto").reduce((s, t) => s + gastoAmt(t), 0);
   }
   function gastoNetoMes(m) {
     return gastoBrutoMes(m) - arriendoNetAdjustment(m);
@@ -475,9 +509,28 @@ async function loadCSV(gid) {
 
   let stackedCatChart, rankChart;
 
-  // Tabla de detalle: transacciones de Gasto del período/categorías visibles, agrupadas por categoría (orden de ranking) y ordenadas por monto.
-  function buildDetailTable(months, orderedCats) {
-    const container = document.getElementById('detailTable');
+  // Fila individual de la tabla de desviación: nombre, monto real, monto presupuestado y % de desviación.
+  function desvRowEl(name, real, presu, isTotal, isSub) {
+    const el = document.createElement('div');
+    el.className = 'desv-row' + (isTotal ? ' desv-total' : '') + (isSub ? ' desv-sub' : '');
+    let pctHtml;
+    if (presu > 0) {
+      const pct = ((real - presu) / presu) * 100;
+      const over = pct > 0.5;
+      pctHtml = `<span class="d-pct ${over ? 'bad' : 'good'}">${pct > 0 ? '+' : ''}${Math.round(pct)}%</span>`;
+    } else {
+      pctHtml = `<span class="d-pct neutral">—</span>`;
+    }
+    el.innerHTML = `<span class="d-name">${escapeHtml(name)}</span><span class="d-amounts">${fmtK(real)} / ${fmtK(presu)}</span>${pctHtml}`;
+    return el;
+  }
+
+  // Tabla real vs presupuesto: por categoría en orden de ranking. Siempre muestra la fila total de la
+  // categoría (gasto total / presupuesto total / % desviación). Si además ≥2 subcategorías de esa categoría
+  // tienen presupuesto propio cargado (ej. Deuda: Universidad y CAE), agrega debajo el desglose por
+  // subcategoría — así se ve el total de Deuda y, a continuación, el detalle por cada tipo de deuda.
+  function buildDesvTable(months, orderedCats) {
+    const container = document.getElementById('desvTable');
     container.innerHTML = '';
     if (months.length === 0 || orderedCats.length === 0) {
       container.innerHTML = '<p class="detail-empty">Selecciona un período y al menos una categoría.</p>';
@@ -485,8 +538,52 @@ async function loadCSV(gid) {
     }
     let any = false;
     orderedCats.forEach(c => {
+      const subs = Array.from(selectedSubs[c]);
+      const subPresu = {};
+      subs.forEach(s => { subPresu[s] = months.reduce((s2, m) => s2 + subValuePresu(m, c, s), 0); });
+      const subsWithBudget = subs.filter(s => subPresu[s] > 0);
+      const hasSubBreakdown = subsWithBudget.length >= 2;
+
+      const catReal = months.reduce((s2, m) => s2 + catValueReal(m, c), 0);
+      const catPresu = months.reduce((s2, m) => s2 + catValuePresu(m, c), 0);
+
+      const subRows = [];
+      if (hasSubBreakdown) {
+        subs.forEach(s => {
+          const real = months.reduce((s2, m) => s2 + subValueReal(m, c, s), 0);
+          const pres = subPresu[s];
+          if (real === 0 && pres === 0) return;
+          subRows.push({ name: s, real, presu: pres });
+        });
+      }
+
+      if (catReal === 0 && catPresu === 0 && subRows.length === 0) return;
+      any = true;
+      const catEl = document.createElement('div');
+      catEl.className = 'detail-cat';
+      catEl.textContent = c;
+      container.appendChild(catEl);
+
+      if (catReal !== 0 || catPresu !== 0) {
+        container.appendChild(desvRowEl(c, catReal, catPresu, hasSubBreakdown, false));
+      }
+      subRows.forEach(r => container.appendChild(desvRowEl(r.name, r.real, r.presu, false, true)));
+    });
+    if (!any) container.innerHTML = '<p class="detail-empty">Sin datos de gasto o presupuesto en este período/selección.</p>';
+  }
+
+  // Tabla de detalle: movimientos (Gasto de las categorías/subcategorías visibles + todos los Ingreso del período), agrupados y ordenados por monto.
+  function buildDetailTable(months, orderedCats) {
+    const container = document.getElementById('detailTable');
+    container.innerHTML = '';
+    if (months.length === 0) {
+      container.innerHTML = '<p class="detail-empty">Selecciona un período.</p>';
+      return;
+    }
+    let any = false;
+    orderedCats.forEach(c => {
       const subs = selectedSubs[c];
-      const rows = txns.filter(t => months.includes(t.month) && t.tipo === "Gasto" && t.categoria === c && subs.has(t.subcategoria));
+      const rows = txns.filter(t => months.includes(t.month) && t.tipo === "Gasto" && t.categoria === c && subs.has(t.subcategoria) && t.monto !== 0);
       if (rows.length === 0) return;
       any = true;
       rows.sort((a, b) => Math.abs(b.monto) - Math.abs(a.monto));
@@ -501,7 +598,26 @@ async function loadCSV(gid) {
         container.appendChild(row);
       });
     });
-    if (!any) container.innerHTML = '<p class="detail-empty">No hay movimientos de Gasto en este período/selección.</p>';
+
+    const ingresoRows = txns.filter(t => months.includes(t.month) && t.tipo === "Ingreso" && t.monto !== 0);
+    const ingresoByCat = {};
+    ingresoRows.forEach(t => { (ingresoByCat[t.categoria] = ingresoByCat[t.categoria] || []).push(t); });
+    Object.keys(ingresoByCat).sort().forEach(c => {
+      any = true;
+      const rows = ingresoByCat[c].sort((a, b) => Math.abs(b.monto) - Math.abs(a.monto));
+      const catEl = document.createElement('div');
+      catEl.className = 'detail-cat income';
+      catEl.textContent = 'Ingreso · ' + c;
+      container.appendChild(catEl);
+      rows.forEach(t => {
+        const row = document.createElement('div');
+        row.className = 'detail-row';
+        row.innerHTML = `<span class="d-fecha">${shortDate(t.fecha)}</span><span class="d-glosa">${escapeHtml(t.glosa) || '—'}</span><span class="d-monto income">+${fmt(Math.abs(t.monto))}</span>`;
+        container.appendChild(row);
+      });
+    });
+
+    if (!any) container.innerHTML = '<p class="detail-empty">No hay movimientos en este período/selección.</p>';
   }
 
   // Plugin: dibuja el monto dentro de la barra y el % afuera, para el ranking de gastos.
@@ -613,6 +729,7 @@ async function loadCSV(gid) {
       plugins: [rankLabelsPlugin]
     });
 
+    buildDesvTable(months, ranked.map(r => r.c));
     buildDetailTable(months, ranked.map(r => r.c));
   }
 
